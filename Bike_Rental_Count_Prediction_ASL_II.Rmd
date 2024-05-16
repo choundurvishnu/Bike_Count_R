@@ -1,0 +1,1366 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+
+Installed all Necessary packages for the Project
+
+```{r}
+library(car)
+library(pls)
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(reshape2)
+library(corrplot)
+library(ggplot2)
+library(ggcorrplot)
+library(leaps)
+library(glmnet)
+library(gbm)
+library(keras)
+library(tidyverse)
+```
+
+# Data Seletion
+Read the CSV file and display dimensions of the dataset
+
+```{r}
+data <- read.csv("C:/Users/choun/OneDrive/Desktop/hour.csv")
+dim(data)   
+
+```
+
+To display datatype of the each column in the Dataset
+```{r}
+str(data)
+```
+
+To display complete summary of the dataset
+
+```{r}
+summary(data)
+```
+# Data PreProcessing
+#### Checking relationship between the dteday and yr column
+
+```{r}
+
+data$Year <- format(as.Date(data$dteday),"%Y")
+data$Category <- ifelse(data$Year == "2011", 0, 1)
+identical_columns <- identical(data$yr, as.integer(data$Category))
+print(identical_columns)
+
+```
+
+#### Checking relationship between the dteday and mnt column
+
+```{r}
+data$month <- format(as.Date(data$dteday),"%m")
+identical_columns <- identical(data$mnth, as.integer(data$month))
+print(identical_columns)
+```
+
+
+#### Checking relationship between the casual, registered and cnt
+
+```{r}
+data$cnt1 <- data$casual+data$registered
+identical_columns <- identical(data$cnt, data$casual+data$registered)
+print(identical_columns)
+
+```
+
+
+#### So we can remove the dteday and other columns we have added for identification
+
+```{r}
+columns_to_remove <- c("dteday", "instant","month","Category","Year","casual","registered","cnt1")
+data <- data[, !names(data) %in% columns_to_remove]
+
+```
+
+
+#### Find and display duplicate rows based on all columns
+
+```{r}
+duplicate_rows <- data[duplicated(data) | duplicated(data, fromLast = TRUE), ]
+print("Duplicate Rows in the Dataset:")
+print(duplicate_rows)
+```
+
+#### Removed the Duplicate Data
+```{r}
+data <- unique(data)
+```
+
+##Missing or Null Values
+#### Check for missing values using is.na() function
+```{r}
+missing_values <- is.na(data)
+```
+
+#### Count missing values in each column
+```{r}
+missing_counts <- colSums(missing_values)
+```
+
+#### Display the missing values in the dataset
+```{r}
+print("Missing Values in the Dataset:")
+print(missing_values)
+```
+
+#### Display the count of missing values in each column
+
+```{r}
+print("Missing Value Counts by Column:")
+print(missing_counts)
+```
+
+Summary of Data
+
+```{r}
+summary(data)
+```
+
+Separating the numerical and categorical columns 
+```{r}
+cat_columns <- c("season","yr","mnth","hr","holiday","weekday","workingday","weathersit")
+num_columns <- c("temp","atemp","hum","windspeed","cnt")
+```
+
+#### Converting the categorical variable into factors
+```{r}
+data[cat_columns] <- lapply(data[cat_columns], as.factor)
+str(data)
+```
+
+
+#### To display Unique values in each column
+
+```{r}
+for (col_name in names(data)) {
+  if (length(unique(data[[col_name]])) < 25) {
+    cat(paste("Unique ", col_name,"'s count: ", length(unique(data[[col_name]])), "\n"))
+    cat(paste("Unique values: ", paste(unique(data[[col_name]]), collapse = ", "), "\n\n"))
+  }
+}
+```
+
+# Data Visualization or Exploratory Data Analysis
+#### Plot all bar plots in a 2x4 layout
+Combine the plots into a 2x4 layout
+# Histogram for all Variables
+```{r}
+library(ggplot2)
+
+gg_list <- lapply(colnames(data), function(var) {
+  ggplot(data, aes(x = data[[var]])) +
+    geom_bar(fill = "skyblue") +
+    labs(title = paste("histogram for", var),
+         x = var)
+})
+
+gridExtra::grid.arrange(grobs = gg_list, ncol = 4)
+
+```
+
+# Histogram for Categorocal and Numerical Variables
+```{r}
+gg_list <- lapply(colnames(data), function(var) {
+  if (is.numeric(data[[var]])) {
+    ggplot(data, aes(x = data[[var]])) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 20) +
+      labs(title = paste("Histogram for", var),
+           x = var, y = "Frequency")
+  } else {
+    ggplot(data, aes(x = factor(data[[var]]))) +
+      geom_bar(fill = "skyblue", color = "black") +
+      labs(title = paste("histogram plot for", var),
+           x = var, y = "Frequency")
+  }
+})
+
+gridExtra::grid.arrange(grobs = gg_list, ncol = 4)
+```
+
+# Bar Plot for all categorical Variables against cnt column
+```{r}
+# Plot all bar graphs in a 2x4 layout
+gg_list <- lapply(cat_columns, function(var) {
+  ggplot(data, aes(x = data[[var]], y = cnt)) +
+    geom_bar(stat = "identity", position = "dodge", fill = "skyblue") +
+    labs(title = paste("Bar Plot for", var),
+         x = var, y = "cnt")
+})
+
+# Combine the plots into a 2x4 layout
+gridExtra::grid.arrange(grobs = gg_list, ncol = 4)
+```
+
+
+# Box Plot for all categorical Variables against cnt column
+```{r}
+# Plot all box plots in a 2x4 layout
+gg_list <- lapply(cat_columns, function(var) {
+  ggplot(data, aes(x = data[[var]], y = cnt)) +
+    geom_boxplot(fill = "skyblue") +
+    labs(title = paste("Box Plot for", var),
+         x = var, y = "cnt")
+})
+
+# Combine the plots into a 2x4 layout
+gridExtra::grid.arrange(grobs = gg_list, ncol = 4)
+
+```
+
+
+# Scatter plot for all continous variables Against cnt column
+```{r}
+scatter_combinations <- list(c("atemp", "cnt"), c("temp", "cnt"), c("hum", "cnt"), c("windspeed", "cnt"))
+
+# Plot all scatter plots in a 2x2 layout
+gg_list <- lapply(scatter_combinations, function(vars) {
+  ggplot(data, aes_string(x = vars[1], y = vars[2])) +
+    geom_point(color = "skyblue") +
+    labs(title = paste("Scatter Plot for", vars[1], "vs", vars[2]),
+         x = vars[1], y = vars[2])
+})
+
+# Combine the plots into a 2x2 layout
+gridExtra::grid.arrange(grobs = gg_list, ncol = 2)
+
+```
+
+
+
+```{r}
+cleaned_data <- data
+
+```
+
+
+# Bar blot of each categorical variable with count
+```{r}
+# Plot all bar plots in a 2x4 layout
+gg_list <- lapply(cat_columns, function(var) {
+  ggplot(data, aes(x = data[[var]])) +
+    geom_bar(fill = "skyblue") +
+    labs(title = paste("Bar Plot for", var),
+         x = var)
+})
+
+# Combine the plots into a 2x4 layout
+gridExtra::grid.arrange(grobs = gg_list, ncol = 4)
+
+```
+# Applying Chi Square test to check association between the two categorical variable
+```{r}
+library(reshape2)
+
+# Create a function to perform chi-square tests and extract p-values
+chi_square_test <- function(x, y) {
+  contingency_table <- table(data[, x], data[, y])
+  chi_square_result <- chisq.test(contingency_table)
+  return(chi_square_result$p.value)
+}
+
+# Compute p-values for all pairs of categorical variables
+variable_names <- cat_columns
+p_values <- matrix(NA, nrow = length(variable_names), ncol = length(variable_names))
+for (i in 1:length(variable_names)) {
+  for (j in 1:length(variable_names)) {
+    if (i != j) {
+      p_values[i, j] <- chi_square_test(i, j)
+    }
+  }
+}
+
+# Create a heatmap of p-values
+colnames(p_values) <- rownames(p_values) <- variable_names
+melted_p_values <- melt(p_values)
+
+# Plot heatmap
+ggplot(melted_p_values, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.4f", value)), vjust = 1) +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Chi-Square Test P-Values Heatmap", x = "Variable", y = "Variable") +
+  theme_minimal()
+```
+
+
+
+# Correlation between the two continous variable
+```{r}
+library(ggcorrplot)
+
+# Calculate the correlation matrix
+
+#cor_matrix <- cor(data[,c("temp","atemp","hum","windspeed","casual","registered","cnt")])
+cor_matrix <- cor(cleaned_data[,c("temp","atemp","hum","windspeed","cnt")])
+
+
+# Display the correlation matrix
+print("Correlation Matrix:")
+print(cor_matrix)
+
+
+ggcorrplot(cor_matrix, hc.order = TRUE, lab = TRUE)
+
+```
+
+# Feature Selection
+### To check the multicollinearity in the data
+```{r}
+lm_model <- lm(cnt ~., data = cleaned_data)
+aliases <- alias(lm_model)
+print(aliases)
+
+```
+
+We found workingday is exhibit the multicollinearity with weekday and holiday. So, removed the working day
+```{r}
+library(car)
+
+cleaned_data <- data.frame(cleaned_data[-7])
+vif(lm(cnt ~., data = cleaned_data))
+```
+
+
+```{r}
+df0 <- cleaned_data
+df0 <- model.matrix( ~., data = cleaned_data)
+df0 <- data.frame(df0[,-1])
+lm_model00 <- lm(cnt ~., data = df0)
+aliases <- alias(lm_model00)
+print(aliases)
+
+```
+
+
+
+
+```{r}
+vif(lm(cnt ~., data = df0))
+```
+
+# Transformation
+Scaled the Data using the Z Normalization
+
+```{r}
+
+df000 <- df0[,-ncol(df0)]
+scale_data <- scale(df000, center = apply(df000, 2, mean), scale = apply(df000, 2, sd))
+cnt <- cleaned_data$cnt
+scale_data <- data.frame(scale_data,cnt)
+dff <- scale_data
+```
+
+
+# Model Selection and Model Training
+
+## Linear Regression
+
+Performed the Linear Regression with 5 fold validation
+```{r}
+library(caret)
+
+set.seed(123)
+trainIndex <- createDataPartition(dff$cnt, p = 0.8, list = FALSE)
+ctrl <- trainControl(method = "cv", number = 5)
+lm.fit <- train(cnt ~., data = dff[trainIndex, ], method = "lm",  trControl = ctrl)
+
+lm.summary <- summary(lm.fit)
+lm.summary
+
+```
+
+
+####Plotted the Actual Values Vs Predicted Values
+```{r}
+predictions = predict(lm.fit,dff[-trainIndex, ])
+plot(dff[-trainIndex, ]$cnt, predictions, pch = 16, col = "red", main = "Actual vs Predicted for Linear Regression Model", xlab = "Actual", ylab = "Predicted")
+
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+```
+
+#### Evaluation Metrics for Linear Regression Model
+```{r}
+actual_values <- dff[-trainIndex, ]$cnt  
+r_squared_lm <- 1 - sum((actual_values - predictions)^2) / sum((actual_values - mean(actual_values))^2)
+mse_lm <- mean((actual_values - predictions)^2)
+rmse_lm <- sqrt(mean((actual_values - predictions)^2))
+mae_lm <- mean(abs(actual_values-predictions))
+
+
+# Display the results
+cat("R-squared: ", r_squared_lm, "\n")
+cat("Mean Square Error (MSE): ", mse_lm, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_lm, "\n")
+cat("Mean Average Error (MAE): ", mae_lm, "\n")
+```
+
+
+## Linear Regression with Interaction Terms
+
+####Checking the interaction terms randomly for few variables
+##### Interaction Terms
+```{r}
+qplot(atemp, cnt, data = cleaned_data, colour = hr) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  stat_smooth(method = "lm") 
+```
+
+
+##### Interaction Terms
+```{r}
+qplot(atemp, cnt, data = cleaned_data, colour = holiday) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  stat_smooth(method = "lm") 
+```
+
+
+##### Non Interaction Terms
+
+```{r}
+
+qplot(windspeed, cnt, data = cleaned_data, colour = holiday) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  stat_smooth(method = "lm") 
+```
+
+
+##### Non Interaction Terms
+
+```{r}
+qplot(windspeed, cnt, data = cleaned_data, colour =yr ) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  stat_smooth(method = "lm") 
+```
+It is difficult to find the interaction terms. So, build a linear regression model with all possible interaction terms and find the muliticollinearity
+```{r}
+library(gridExtra)
+#grid.arrange(p2)
+interaction_terms <- model.matrix(~.^2, data = cleaned_data[,-12])
+
+# Fit a linear regression model with interaction terms
+model <- lm(cnt ~ . -1, data = data.frame(interaction_terms))
+alias_terms <- alias(model)$Complete
+alias_vars <- rownames(alias_terms)
+nnn <- names(data.frame(interaction_terms))
+result_col <- setdiff(nnn, alias_vars)
+result_col
+```
+
+
+Most significant interaction terms
+
+```{r}
+summary_table <- summary(model)
+#significant_terms <- summary_table$coefficients
+significant_terms <- summary_table$coefficients[summary_table$coefficients[, "Pr(>|t|)"] < 0.05, ]
+# Print significant terms
+print(significant_terms)
+
+```
+
+#### Performing the Linear Regression with most significant interaction terms
+
+```{r}
+ctrl <- trainControl(method = "cv", number = 5)
+lm.fit_it <- train(cnt ~.+(holiday*atemp)+(temp*atemp)+(season*yr)+(yr*atemp)+(hr*holiday)+(season*hr)+
+                     (yr*hr)+(mnth*hr)+(yr*hr)+(mnth*hr)+(yr*hr)+(mnth*hum)+(yr*mnth)+(hr*weekday), 
+                   data = cleaned_data[trainIndex, ],method="lm",trControl = ctrl)
+
+lm.summary_it <- summary(lm.fit_it)
+lm.summary_it
+```
+
+
+####Plotted the Actual Values Vs Predicted Values
+```{r}
+
+predictions = predict(lm.fit_it,cleaned_data[-trainIndex, ])
+plot(cleaned_data[-trainIndex, ]$cnt, predictions, pch = 16, col = "red", main = "Actual vs Predicted for Linear Regression with Interaction Terms", xlab = "Actual", ylab = "Predicted")
+
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+```
+
+#### Evaluation Metrics for Linear Regression Model with Interaction Terms
+```{r}
+actual_values <- cleaned_data[-trainIndex, ]$cnt  
+r_squared_it <- 1 - sum((actual_values - predictions)^2) / sum((actual_values - mean(actual_values))^2)
+mse_it <- mean((actual_values - predictions)^2)
+rmse_it <- sqrt(mean((actual_values - predictions)^2))
+mae_it <- mean(abs(actual_values-predictions))
+cat("Mean Average Error (MAE): ", mae_it, "\n")
+# Display the results
+cat("R-squared: ", r_squared_it, "\n")
+cat("Mean Square Error (MsE): ", mse_it, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_it, "\n")
+```
+
+
+## Linear Regression with Polynomial of Degree 2
+Performed all numerical column with degree 2 and found whether exhibit multicolinearity or not
+```{r}
+### Polynomial degree 2
+predictors <- num_columns[-c(5)]
+poly_de2 <- data.frame(cleaned_data)
+for(predictor in predictors) {
+  poly_de2[paste(predictor, "de-2", sep = "-")] <- cleaned_data[predictor]^2
+}
+poly_de2 <- data.frame(poly_de2) 
+df02 <- model.matrix( ~., data = poly_de2)
+df02 <- data.frame(df02[,-1])
+lm_model00 <- lm(cnt ~., data = data.frame(df02))
+aliases <- alias(lm_model00)
+print(aliases)
+
+```
+
+
+
+```{r}
+vif(lm(cnt ~., data = data.frame(df02)))
+
+```
+
+
+Scaled down the variables using Z Normalization
+```{r}
+df000 <- df02[,-53]
+scale_data <- scale(df000, center = apply(df000, 2, mean), scale = apply(df000, 2, sd))
+cnt <- cleaned_data$cnt
+scale_data <- data.frame(scale_data,cnt)
+poly_de2 <- scale_data
+```
+
+
+#### Performed the Linear Regression with polynomial of Degree 2 with 5 fold validation
+```{r}
+lm.fit_2 <- train(cnt ~ ., data = poly_de2[trainIndex, ], method = "lm",  trControl = ctrl)
+lm.summary_2 <- summary(lm.fit_2)
+lm.summary_2
+```
+
+####Plotted the Actual Values Vs Predicted Values
+```{r}
+predictions = predict(lm.fit_2,poly_de2[-trainIndex,])
+plot(poly_de2[-trainIndex,]$cnt, predictions, pch = 16, col = "red", main = "Actual vs Predicted for Linear Regression with degree 2", xlab = "Actual", ylab = "Predicted")
+
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+
+```
+
+
+####Evaluation Metrics for Linear Regression Model of Polynomial of Degree 2
+```{r}
+actual_values <- poly_de2[-trainIndex,]$cnt  
+r_squared_lm2 <- 1 - sum((actual_values - predictions)^2) / sum((actual_values - mean(actual_values))^2)
+mse_lm2 <- mean((actual_values - predictions)^2)
+rmse_lm2 <- sqrt(mean((actual_values - predictions)^2))
+mae_lm2 <- mean(abs(actual_values-predictions))
+
+# Display the results
+cat("R-squared: ", r_squared_lm2, "\n")
+cat("Mean Square Error (MSE): ", mse_lm2, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_lm2, "\n")
+cat("Mean Average Error (MAE): ", mae_lm2, "\n")
+
+```
+
+
+## Linear Regression with Polynomial of Degree 3
+Performed all numerical column with degree 3 and found whether exhibit multicolinearity or not
+```{r}
+### Polynomial degree 3
+predictors <- num_columns[-c(5)]
+poly_de3 <- data.frame(cleaned_data)
+for(predictor in predictors) {
+  poly_de3[[paste(predictor, "de-2", sep = "-")]] <- cleaned_data[[predictor]]^2
+  poly_de3[[paste(predictor, "de-3", sep = "-")]] <- cleaned_data[[predictor]]^3
+}
+poly_de3 <- data.frame(poly_de3) 
+df03 <- model.matrix( ~., data = poly_de3)
+df03 <- data.frame(df03[,-1])
+lm_model00 <- lm(cnt ~., data = data.frame(df03))
+aliases <- alias(lm_model00)
+print(aliases)
+
+```
+
+
+```{r}
+vif(lm(cnt ~., data = data.frame(df03)))
+
+```
+
+Scaled down the variables using Z Normalization
+```{r}
+df000 <- df03[,-53]
+scale_data <- scale(df000, center = apply(df000, 2, mean), scale = apply(df000, 2, sd))
+cnt <- cleaned_data$cnt
+scale_data <- data.frame(scale_data,cnt)
+poly_de3 <- scale_data
+
+lm.fit_3 <- train(cnt ~ ., data = poly_de3[trainIndex, ], method = "lm",  trControl = ctrl)
+lm.summary_3 <- summary(lm.fit_3)
+lm.summary_3
+```
+
+
+####Plotted the Actual Values Vs Predicted Values
+```{r}
+
+predictions = predict(lm.fit_3,poly_de3[-trainIndex,])
+plot(poly_de3[-trainIndex,]$cnt, predictions, pch = 16, col = "red", main = "Actual vs Predicted for Linear Regression with degree 3", xlab = "Actual", ylab = "Predicted")
+
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+
+
+```
+
+
+####Evaluation Metrics for Linear Regression Model of Polynomial of Degree 3
+```{r}
+actual_values <- poly_de3[-trainIndex,]$cnt  
+r_squared_lm3 <- 1 - sum((actual_values - predictions)^2) / sum((actual_values - mean(actual_values))^2)
+mse_lm3 <- mean((actual_values - predictions)^2)
+rmse_lm3 <- sqrt(mean((actual_values - predictions)^2))
+mae_lm3 <- mean(abs(actual_values-predictions))
+
+# Display the results
+cat("R-squared: ", r_squared_lm3, "\n")
+cat("Mean Square Error (MsE): ", mse_lm3, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_lm3, "\n")
+cat("Mean Average Error (MAE): ", mae_lm3, "\n")
+
+```
+
+
+```{r}
+
+```
+
+
+## Linear Regression with Polynomial of Degree 4
+Performed all numerical column with degree 4 and found whether exhibit multicolinearity or not
+
+```{r}
+predictors <- num_columns[-c(5)]
+poly_de4 <- data.frame(cleaned_data)
+for(predictor in predictors) {
+  #poly_de2[paste(predictor, "de-2", sep = "-")] <- cleaned_data[predictor]^2
+  poly_de4[[paste(predictor, "de-2", sep = "-")]] <- cleaned_data[[predictor]]^2
+  poly_de4[[paste(predictor, "de-3", sep = "-")]] <- cleaned_data[[predictor]]^3
+  poly_de4[[paste(predictor, "de-4", sep = "-")]] <- cleaned_data[[predictor]]^4
+}
+poly_de4 <- data.frame(poly_de4) 
+df04 <- model.matrix( ~., data = poly_de4)
+df04 <- data.frame(df04[,-1])
+lm_model00 <- lm(cnt ~., data = data.frame(df04))
+aliases <- alias(lm_model00)
+print(aliases)
+
+```
+
+
+
+```{r}
+vif(lm(cnt ~., data = data.frame(df04)))
+
+```
+
+
+```{r}
+df000 <- df04[,-53]
+scale_data <- scale(df000, center = apply(df000, 2, mean), scale = apply(df000, 2, sd))
+cnt <- cleaned_data$cnt
+
+scale_data <- data.frame(scale_data,cnt)
+poly_de4 <- scale_data
+lm.fit_4 <- train(cnt ~ ., data = poly_de4[trainIndex, ], method = "lm",  trControl = ctrl)
+
+lm.summary_4 <- summary(lm.fit_4)
+lm.summary_4
+
+```
+
+####Plotted the Actual Values Vs Predicted Values
+```{r}
+predictions = predict(lm.fit_4,poly_de4[-trainIndex,])
+plot(poly_de4[-trainIndex,]$cnt, predictions, pch = 16, col = "red", main = "Actual vs Predicted for Linear Regression with degree 4", xlab = "Actual", ylab = "Predicted")
+
+abline(a = 0, b = 1, col = "black",lty=1,lwd=4)
+
+
+```
+
+####Evaluation Metrics for Linear Regression Model of Polynomial of Degree 4
+```{r}
+actual_values <- poly_de4[-trainIndex,]$cnt  
+r_squared_lm4 <- 1 - sum((actual_values - predictions)^2) / sum((actual_values - mean(actual_values))^2)
+mse_lm4 <- mean((actual_values - predictions)^2)
+rmse_lm4 <- sqrt(mean((actual_values - predictions)^2))
+mae_lm4 <- mean(abs(actual_values-predictions))
+cat("Mean Average Error (MAE): ", mae_lm4, "\n")
+# Display the results
+cat("R-squared: ", r_squared_lm4, "\n")
+cat("Mean Square Error (MsE): ", mse_lm4, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_lm4, "\n")
+cat("Mean Average Error (MAE): ", mae_lm4, "\n")
+
+```
+
+
+```{r}
+
+```
+
+# SubSet Selection
+## Forward Subset Selection
+```{r}
+regfit.fwd=regsubsets(cnt ~ ., data=dff[trainIndex,],nvmax=ncol(dff)-1,method="forward")
+reg.summary.fwd <- summary(regfit.fwd)
+reg.summary.fwd
+```
+
+
+#### Finding the R2, MSE and MAE
+```{r}
+cv.errors.fwd <- rep(NA,51)
+mae.fwd <- rep(NA,51)
+cv.r2.fwd <- rep(NA,51)
+test.mat=model.matrix(cnt~.,data=dff[-trainIndex,])
+
+best.fit.fwd <- regsubsets(cnt ~., data = dff[trainIndex,], nvmax = ncol(dff)-1,method = "forward")
+for (i in 1:51) {
+  
+  coefi=coef(best.fit.fwd,id=i)
+  pred=test.mat[,names(coefi)]%*%coefi
+  cv.errors.fwd[i]=mean((dff$cnt[-trainIndex]-pred)^2)
+  cv.r2.fwd[i] = 1 - sum((pred-dff$cnt[-trainIndex])^2) / sum((dff$cnt[-trainIndex] - mean(dff$cnt[-trainIndex]))^2)
+  mae.fwd[i] <- mean(abs(dff$cnt[-trainIndex]-pred))
+}
+rmse_fwd <- sqrt(cv.errors.fwd)
+cv.errors.fwd
+
+```
+
+```{r}
+rmse_fwd
+
+```
+
+```{r}
+cv.r2.fwd
+
+```
+
+```{r}
+mae.fwd
+
+```
+
+
+```{r}
+which.min(reg.summary.fwd$bic)
+
+```
+
+#### Plot the curve with BIC with number of Variables
+```{r}
+plot(reg.summary.fwd$bic,xlab="Number of Variables",ylab="BIC",type='l')
+points(38,reg.summary.fwd$bic[38],col="red",cex=2,pch=20)
+
+```
+
+#### Plotting the BIC with variables
+```{r}
+plot(regfit.fwd,scale="bic")
+```
+
+```{r}
+coef(regfit.fwd,38)
+```
+
+
+```{r}
+coefi=coef(best.fit.fwd,id=38)
+coefi
+```
+
+```{r}
+pred.fwd=test.mat[,names(coefi)]%*%coefi
+```
+
+####Plotted the Actual Values Vs Predicted Values
+```{r}
+plot(dff$cnt[-trainIndex], pred.fwd, pch = 16, col = "red", main = "Actual vs Predicted for Forward Selection", xlab = "Actual", ylab = "Predicted")
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+```
+
+####Evaluation Metrics for Forward Selection
+```{r}
+mse_fw <- cv.errors.fwd[38]
+rmse_fw <-rmse_fwd[38]
+r_squared_fw<-cv.r2.fwd[38]
+mae_fw <- mae.fwd[38]
+# Display the results
+cat("R-squared: ", r_squared_fw, "\n")
+cat("Mean Square Error (MsE): ", mse_fw, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_fw, "\n")
+cat("Mean Average Error (MAE): ", mae_fw, "\n")
+
+```
+
+
+```{r}
+
+```
+
+
+## Backward Subset Selection
+```{r}
+################ Backward
+
+regfit.bwd=regsubsets(cnt ~ ., data=dff[trainIndex,],nvmax=ncol(dff)-1,method="backward")
+reg.summary.bwd <- summary(regfit.bwd)
+reg.summary.bwd
+
+```
+
+
+#### Finding the R2, MSE and MAE
+```{r}
+
+cv.errors.bwd <- rep(NA,51)
+cv.r2.bwd <- rep(NA,51)
+mae.bwd <- rep(NA,51)
+test.mat=model.matrix(cnt~.,data=dff[-trainIndex,])
+
+best.fit.bwd <- regsubsets(cnt ~., data = dff[trainIndex,], nvmax = ncol(dff)-1,method = "backward")
+for (i in 1:51) {
+  
+  coefi=coef(best.fit.bwd,id=i)
+  pred=test.mat[,names(coefi)]%*%coefi
+  cv.errors.bwd[i]=mean((dff$cnt[-trainIndex]-pred)^2)
+  mae.bwd[i] <- mean(abs(dff$cnt[-trainIndex]-pred))
+  cv.r2.bwd[i] = 1 - sum((pred-dff$cnt[-trainIndex])^2) / sum((dff$cnt[-trainIndex] - mean(dff$cnt[-trainIndex]))^2)
+}
+
+rmse_bwd <- sqrt(cv.errors.bwd)
+cv.errors.bwd
+
+```
+
+
+```{r}
+rmse_bwd
+
+```
+
+```{r}
+cv.r2.bwd
+
+```
+
+```{r}
+mae.bwd
+```
+
+
+```{r}
+which.min(reg.summary.bwd$bic)
+```
+
+####plotting the BIC with number of variables
+```{r}
+plot(reg.summary.bwd$bic,xlab="Number of Variables",ylab="BIC",type='l')
+points(37,reg.summary.bwd$bic[37],col="red",cex=2,pch=20)
+
+```
+
+####plotting the BIC with variables
+```{r}
+plot(regfit.bwd,scale="bic")
+
+```
+
+
+```{r}
+coef(regfit.bwd,37)
+
+```
+
+
+```{r}
+coefi=coef(best.fit.bwd,id=37)
+pred.bwd=test.mat[,names(coefi)]%*%coefi
+plot(dff$cnt[-trainIndex], pred.bwd, pch = 16, col = "red", main = "Actual vs Predicted for Backward Selection", xlab = "Actual", ylab = "Predicted")
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+```
+
+
+
+####Evaluation Metrics for Backward Selection
+```{r}
+mse_bw <- cv.errors.bwd[37]
+rmse_bw <-rmse_bwd[37]
+r_squared_bw<-cv.r2.bwd[37]
+mae_bw <- mae.bwd[37]
+# Display the results
+cat("R-squared: ", r_squared_bw, "\n")
+cat("Mean Square Error (MsE): ", mse_bw, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_bw, "\n")
+cat("Mean Absolute Error (RMSE): ", mae_bw, "\n")
+
+```
+
+
+#Regularization Techniques or Shrinkage Methods 
+## Lasso and ridge Regression
+```{r}
+X <- model.matrix(cnt~.,dff)[,-1]
+y <- dff$cnt
+```
+
+
+
+## Lasso Regression
+performed lasso Regression with 5 fold validation
+```{r}
+grid=10^seq(10,-2,length=100)
+lasso.mod=glmnet(X[trainIndex,],y[trainIndex],alpha=1,lambda=grid,nfolds=5)
+plot(lasso.mod)
+
+```
+
+
+```{r}
+set.seed(1)
+cv.out.lasso=cv.glmnet(X[trainIndex,],y[trainIndex],alpha=1,nfolds=5)
+plot(cv.out.lasso)
+
+```
+##### Best Lambda Value
+```{r}
+bestlam=cv.out.lasso$lambda.min
+bestlam
+
+```
+
+
+#### Evaluatrion Metrics
+```{r}
+lasso.pred=predict(lasso.mod,s=bestlam,newx=X[-trainIndex,])
+mse_lr <- mean((lasso.pred-y[-trainIndex])^2)
+mae_lr <- mean(abs(lasso.pred-y[-trainIndex]))
+rmse_lr <- sqrt(mse_lr)
+r_squared_lr <- 1 - sum((lasso.pred-y[-trainIndex])^2) / sum((y[-trainIndex] - mean(y[-trainIndex]))^2)
+
+```
+
+
+#### Plotting the Actual values Vs Predicted vaues
+```{r}
+plot(dff$cnt[-trainIndex], lasso.pred, pch = 16, col = "red", main = "Actual vs Predicted for Lasso Regression", xlab = "Actual", ylab = "Predicted")
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+
+
+```
+
+#### To get good predictors using Lasso
+```{r}
+out=glmnet(X,y,alpha=1,lambda=grid)
+lasso.coef=predict(out,type="coefficients",s=bestlam)[1:ncol(X),]
+lasso.coef
+
+```
+
+```{r}
+lasso.coef[lasso.coef!=0]
+
+```
+
+
+```{r}
+# Display the results
+cat("R-squared: ", r_squared_lr, "\n")
+cat("Mean Square Error (MsE): ", mse_lr, "\n")
+cat("Mean Absolute Error (MAE): ", mae_lr, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_lr, "\n")
+```
+
+
+## Ridge Regression
+Perfoming the Ridge Regression with 5 fold validation
+```{r}
+ridge.mod=glmnet(X[trainIndex,],y[trainIndex],alpha=0,lambda=grid,nfold = 5)
+plot(ridge.mod)
+```
+
+
+```{r}
+set.seed(1)
+cv.out.ridge=cv.glmnet(X[trainIndex,],y[trainIndex],alpha=0,nfold = 5)
+plot(cv.out.ridge)
+
+```
+
+##### Best Lambda Value
+```{r}
+bestlam=cv.out.ridge$lambda.min
+bestlam
+
+```
+
+#### Evaluation Metrics
+```{r}
+ridge.pred=predict(ridge.mod,s=bestlam,newx=X[-trainIndex,])
+mse_rr <- mean((ridge.pred-y[-trainIndex])^2)
+mae_rr <- mean(abs(ridge.pred-y[-trainIndex]))
+rmse_rr <- sqrt(mse_rr)
+r_squared_rr <- 1 - sum((ridge.pred-y[-trainIndex])^2) / sum((y[-trainIndex] - mean(y[-trainIndex]))^2)
+
+```
+
+
+#### Plotting the Actual values Vs Predicted vaues
+```{r}
+plot(dff$cnt[-trainIndex], ridge.pred, pch = 16, col = "red", main = "Actual vs Predicted for Ridge regression", xlab = "Actual", ylab = "Predicted")
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+
+```
+
+#### To get good predictors using Ridge
+```{r}
+out=glmnet(X,y,alpha=0,lambda=grid)
+ridge.coef=predict(out,type="coefficients",s=bestlam)[1:ncol(X),]
+ridge.coef
+
+```
+
+```{r}
+ridge.coef[ridge.coef!=0]
+```
+
+```{r}
+# Display the results
+cat("R-squared: ", r_squared_rr, "\n")
+cat("Mean Square Error (MSE): ", mse_rr, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_rr, "\n")
+cat("Mean Absolute Error (MAE): ", mae_rr, "\n")
+
+```
+
+## Random Forest
+```{r}
+#library(reprtree)
+set.seed(1)
+rf.model=randomForest(cnt~.,data=dff,subset=trainIndex,importance=TRUE)
+
+```
+
+#### Plot of MAE Vs Number of Trees
+```{r}
+plot(rf.model)
+```
+
+#### Summary of the Model
+```{r}
+rf.summary <- summary(rf.model)
+rf.summary
+```
+
+
+#### Evaluation Metrics 
+```{r}
+yhat.rf = predict(rf.model,newdata=dff[-trainIndex,])
+mse_rf = mean((yhat.rf-dff$cnt[-trainIndex])^2)
+mae_rf = mean(abs(yhat.rf-dff$cnt[-trainIndex]))
+rmse_rf = sqrt(mse_rf)
+r_squared_rf = 1 - sum((yhat.rf-dff$cnt[-trainIndex])^2) / sum((dff$cnt[-trainIndex] - mean(dff$cnt[-trainIndex]))^2)
+
+```
+
+#### Importance predictors 
+In Ascending Order
+```{r}
+importance(rf.model)
+```
+
+```{r}
+varImpPlot(rf.model)
+
+```
+
+#### Plotting the Actual values Vs Predicted vaues
+```{r}
+plot(dff$cnt[-trainIndex], yhat.rf, pch = 16, col = "red", main = "Actual vs Predicted for Random Forest", xlab = "Actual", ylab = "Predicted")
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+```
+
+```{r}
+# Display the results
+cat("R-squared: ", r_squared_rf, "\n")
+cat("Mean Square Error (MsE): ", mse_rf, "\n")
+cat("Mean Absolute Error (MAE): ", mae_rf, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_rf, "\n")
+
+```
+
+
+##Boosting Technique – Gradient Boosting Machine
+Gradient Boosting Machine with Gaussian Distribution
+No of Trees: 500
+5-fold Validation
+Depth = 6
+```{r}
+set.seed(1)
+boost.model = gbm(cnt~.,data=dff[trainIndex,],distribution="gaussian",n.trees=5000,cv.folds = 5,interaction.depth=6)
+
+```
+
+#### Summary of the model
+```{r}
+summary(boost.model)
+```
+
+```{r}
+plot(boost.model)
+```
+
+
+```{r}
+plot(boost.model,i="atemp")
+
+```
+
+
+```{r}
+plot(boost.model,i="hum")
+```
+
+#### Evalution metrics
+```{r}
+yhat.boost=predict(boost.model,newdata=dff[-trainIndex,],n.trees=5000)
+mse_gbm <- mean((yhat.boost-dff$cnt[-trainIndex])^2)
+mae_gbm <- mean(abs(yhat.boost-dff$cnt[-trainIndex]))
+rmse_gbm <- sqrt(mse_gbm)
+r_squared_gbm = 1 - sum((yhat.boost-dff$cnt[-trainIndex])^2) / sum((dff$cnt[-trainIndex] - mean(dff$cnt[-trainIndex]))^2)
+```
+
+#### Plotting the Actual values Vs Predicted vaues
+```{r}
+plot(dff$cnt[-trainIndex], yhat.boost, pch = 16, col = "red", main = "Actual vs Predicted for Boosting", xlab = "Actual", ylab = "Predicted")
+abline(a = 0, b = 01, col = "black",lty=1,lwd=3)
+```
+
+#### Evaluation Metrics
+```{r}
+# Display the results
+cat("R-squared: ", r_squared_gbm, "\n")
+cat("Mean Square Error (MSE): ", mse_gbm, "\n")
+cat("Mean Absolute Error (MAE): ", mae_gbm, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_gbm, "\n")
+
+```
+
+
+## Neural Network
+
+Scaled the all independent variables as X and dependent variables as y
+
+```{r}
+####  Neural Network
+
+X <- scale(model.matrix(cnt~. -1, data=df0))
+y <- df0$cnt
+
+```
+
+
+Split tbe data into training and testing
+```{r}
+x_train <- X[trainIndex, ]
+y_train <- y[trainIndex]
+x_test <- X[-trainIndex, ]
+y_test <- y[-trainIndex]
+
+```
+
+
+Implement the model with learbibg rate= 0.001
+
+```{r}
+# Assuming you want to use L2 regularization with lambda = 0.001
+l2_lambda <- 0.001
+
+# Build a neural network model 
+model <- keras_model_sequential() %>%
+  layer_dense(units = 128, activation = 'relu', input_shape = ncol(X), kernel_regularizer = regularizer_l2(l2_lambda)) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 64, activation = 'relu', kernel_regularizer = regularizer_l2(l2_lambda)) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 32, activation = 'relu', kernel_regularizer = regularizer_l2(l2_lambda)) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 1)
+
+```
+
+
+Compile the model with adam optimizer and loss are MSE
+```{r}
+# Compile the model
+model %>% compile(
+  optimizer = 'adam',
+  loss = 'mean_squared_error'  # For regression tasks
+)
+
+
+```
+
+
+Fitting the model with 80% for training and 20 % for validation of Training data. i.e., 64% for full data is used for training and 16% used for validation
+
+```{r}
+# Train the model
+model %>% fit(
+  x_train,y_train,
+  epochs = 20,
+  batch_size = 32,
+  validation_split = 0.2
+)
+```
+
+
+#### Prediction the testing data valuesS
+```{r}
+
+npred <- predict(model , x_test)
+
+```
+
+
+#### Plotting the Actual values Vs Predicted vaues
+```{r}
+plot(y_test, npred, pch = 16, col = "red", main = "Actual vs Predicted", xlab = "Actual", ylab = "Predicted")
+abline(a = 0, b = 1, col = "black",lty=1,lwd=3)
+```
+
+#### Evaluation Metrics
+```{r}
+mse_nn <- mean((npred-y_test)^2)
+mae_nn <- mean(abs(npred-y_test))
+rmse_nn <- sqrt(mse_nn)
+r_squared_nn <-  1 - sum((npred-y_test)^2) / sum((y_test - mean(y_test))^2)
+# Display the results
+cat("R-squared: ", r_squared_nn, "\n")
+cat("Mean Square Error (MsE): ", mse_nn, "\n")
+cat("Mean Absolute Error (MAE): ", mae_nn, "\n")
+cat("Root Mean Square Error (RMSE): ", rmse_nn, "\n")
+```
+
+
+# Evaluation Metrics
+```{r}
+# Create a sample data frame (replace this with your actual data)
+model_data <- data.frame(
+  Model = c("linear Regression","poly 2","poly 3","poly 4","LR_InterTerms","forward","backward","lasso","ridge","random forest","boosting","NN"),
+  RSquare = c(r_squared_lm,r_squared_lm2,r_squared_lm3,r_squared_lm4,r_squared_it,r_squared_fw,r_squared_bw,r_squared_lr,r_squared_rr,r_squared_rf,r_squared_gbm,r_squared_nn)*100,
+  MAE = c(mae_lm,mae_lm2,mae_lm3,mae_lm4,mae_it,mae_fw,mae_bw,mae_lr,mae_rr,mae_rf,mae_gbm,mae_nn),
+  RMSE = c(rmse_lm,rmse_lm2,rmse_lm3,rmse_lm4,rmse_it,rmse_fw,rmse_bw,rmse_lr,rmse_rr,rmse_rf,rmse_gbm,rmse_nn)
+)
+
+# Melt the data frame for easy plotting
+
+melted_data <- melt(model_data, id.vars = "Model")
+#melted_data$variable <- melted_data$variable * 100
+
+melted_data$Model <- reorder(melted_data$Model, melted_data$value, FUN = function(x) min(x))
+
+# Function to generate a color palette
+get_color_palette <- function(n) {
+  hcl(h = seq(15, 375, length.out = n + 1), l = 65, c = 100)[1:n]
+}
+
+
+```
+
+
+
+### Mean Absolute Error
+```{r}
+# Separate plots for MSE, RMSE, and RSquare with different colors and labels
+mae_plot <- ggplot(subset(melted_data, variable == "MAE"), aes(x = Model, y = value, fill = Model)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = get_color_palette(nrow(model_data))) +
+  geom_text(aes(label = round(value,4)), vjust = -0.5) +
+  labs(title = "MAE Plot",
+       x = "Models",
+       y = "MAE") +
+  theme_minimal()
+
+# Print the plots
+print(mae_plot)
+
+```
+
+
+### Root Mean Square Error
+```{r}
+rmse_plot <- ggplot(subset(melted_data, variable == "RMSE"), aes(x = Model, y = value, fill = Model)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = get_color_palette(nrow(model_data))) +
+  geom_text(aes(label = round(value,4)), vjust = -0.5) +
+  labs(title = "RMSE Plot",
+       x = "Models",
+       y = "RMSE") +
+  theme_minimal()
+print(rmse_plot)
+
+```
+
+
+### R squared 
+```{r}
+
+rsquare_plot <- ggplot(subset(melted_data, variable == "RSquare"), aes(x = Model, y = value, fill = Model)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = get_color_palette(nrow(model_data))) +
+  geom_text(aes(label = round(value, 2)), vjust = -0.5) +
+  labs(title = "R Square Plot",
+       x = "Models",
+       y = "R Square") +
+  theme_minimal()
+
+
+print(rsquare_plot)
+
+```
+
+### Display all model values with all Evalutoion metrics
+```{r}
+model_data
+
+```
+
+
+
+
